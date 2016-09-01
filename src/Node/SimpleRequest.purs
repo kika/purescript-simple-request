@@ -16,10 +16,12 @@ module Node.SimpleRequest
   , getURI
   , simpleRequest
   , request
+  , requestB
   , get
   ) where
 
 import Prelude
+import Global (readInt)
 
 import Network.HTTP as Network
 
@@ -27,8 +29,9 @@ import Data.Options as Options
 import Data.Functor.Contravariant ((>$<))
 import Data.Tuple (Tuple(..))
 import Data.Foldable (class Foldable, foldl)
-import Data.StrMap (StrMap, empty, insert)
+import Data.StrMap (StrMap, empty, insert, lookup)
 import Data.Maybe (fromMaybe)
+import Data.Int (fromNumber)
 
 import Control.Bind ((<=<))
 import Control.Monad.Aff as Aff
@@ -95,8 +98,18 @@ foreign import collapseStream :: forall w e. Stream.Readable w e
                               -> (String -> Eff e Unit)
                               -> Eff e Unit
 
+foreign import collapseStreamB :: forall w e. Int 
+                              -> Stream.Readable w e
+                              -> (Error -> Eff e Unit)
+                              -> (Buffer.Buffer -> Eff e Unit)
+                              -> Eff e Unit
+
+
 collapseStreamAff :: forall w e. Stream.Readable w e -> Aff.Aff e String
 collapseStreamAff = Aff.makeAff <<< collapseStream
+
+collapseStreamAffB :: forall w e. Int -> Stream.Readable w e -> Aff.Aff e Buffer.Buffer
+collapseStreamAffB size = Aff.makeAff <<< collapseStreamB size
 
 collectResponseInfo :: Client.Response -> Response (Client.Response)
 collectResponseInfo resp =
@@ -118,13 +131,28 @@ writeEndIgnore r a b sc = do
   Stream.write stream b (pure unit)
   Stream.end stream (pure unit)
 
+respSize::forall r.{responseHeaders::StrMap String|r} -> Int 
+respSize resp = fromMaybe 0 $ 
+                fromNumber =<< 
+                readInt 10 <$> 
+                lookup "content-length" resp.responseHeaders
+
 requestImpl :: forall e a b. (a -> b -> Aff.Aff (http :: Node.HTTP | e) Client.Response)
             -> a -> b
             -> Aff.Aff (http :: Node.HTTP | e) (Response String)
 requestImpl r a b = do
   resp <- r a b
-  body <- collapseStreamAff $ Client.responseAsStream resp
   let resp' = collectResponseInfo resp
+  body <- collapseStreamAff $ Client.responseAsStream resp
+  pure $ resp' { body = body }
+
+requestImplB :: forall e a b. (a -> b -> Aff.Aff (http :: Node.HTTP | e) Client.Response)
+            -> a -> b
+            -> Aff.Aff (http :: Node.HTTP | e) (Response Buffer.Buffer)
+requestImplB r a b = do
+  resp <- r a b
+  let resp' = collectResponseInfo resp
+  body <- collapseStreamAffB (respSize resp') $ Client.responseAsStream resp
   pure $ resp' { body = body }
 
 getEmptyBuffer :: forall e. Aff.Aff e Buffer.Buffer
@@ -174,9 +202,18 @@ simpleRequest :: forall e. Options.Options Client.RequestOptions
         -> Aff.Aff ( http :: Node.HTTP | e ) (Response String)
 simpleRequest = requestImpl requestAsAff
 
+simpleRequestB :: forall e. Options.Options Client.RequestOptions
+        -> Buffer.Buffer
+        -> Aff.Aff ( http :: Node.HTTP | e ) (Response Buffer.Buffer)
+simpleRequestB = requestImplB requestAsAff
+
 request :: forall e. Options.Options Client.RequestOptions
         -> Aff.Aff ( http :: Node.HTTP | e ) (Response String)
 request o = getEmptyBuffer >>= simpleRequest o
+
+requestB :: forall e. Options.Options Client.RequestOptions
+        -> Aff.Aff ( http :: Node.HTTP | e ) (Response Buffer.Buffer)
+requestB o = getEmptyBuffer >>= simpleRequestB o
 
 get :: forall e. Options.Options Client.RequestOptions
     -> Aff.Aff ( http :: Node.HTTP | e ) String

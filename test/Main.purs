@@ -35,6 +35,11 @@ testCookie = SR.hostname := "httpbin.org"
         <> SR.method := HTTP.GET
         <> SR.protocol := SR.HTTP
 
+testBinary = SR.hostname := "httpbin.org"
+        <> SR.path := "/bytes/1001"
+        <> SR.method := HTTP.GET
+        <> SR.protocol := SR.HTTP
+
 simpleTest = do
   res1 <- Aff.attempt $ SR.requestURI "https://www.reddit.com/r/purescript.json"
   either (const $ log "aww :(") (const $ log "yay!") res1
@@ -57,6 +62,11 @@ cookieTest = do
   log "Cookies:"
   logShow $ res3.responseCookies
 
+binaryTest = do
+  res3 <- SR.requestB testBinary
+  len <- liftEff (Buffer.size res3.body)
+  log ("Binary: got " <> show len <> " bytes of binary data")
+
 postTest = do
   postData <- liftEff $ Buffer.fromString "hello" UTF8
   res3 <- SR.simpleRequest testPost postData
@@ -68,3 +78,4 @@ main = Aff.runAff Console.logShow pure $ void do
   optsTest
   postTest
   cookieTest
+  binaryTest
