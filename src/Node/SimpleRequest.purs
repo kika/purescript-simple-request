@@ -33,9 +33,8 @@ import Data.StrMap (StrMap, empty, insert, lookup)
 import Data.Maybe (fromMaybe)
 import Data.Int (fromNumber)
 
-import Control.Bind ((<=<))
 import Control.Monad.Aff as Aff
-import Control.Monad.Aff.Unsafe (unsafeInterleaveAff)
+import Control.Monad.Aff.Unsafe (unsafeCoerceAff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Eff.Class (liftEff)
@@ -156,7 +155,7 @@ requestImplB r a b = do
   pure $ resp' { body = body }
 
 getEmptyBuffer :: forall e. Aff.Aff e Buffer.Buffer
-getEmptyBuffer = unsafeInterleaveAff buffer
+getEmptyBuffer = unsafeCoerceAff buffer
   where
   buffer :: Aff.Aff ( buffer :: Buffer.BUFFER ) Buffer.Buffer
   buffer = liftEff $ Buffer.create 0
