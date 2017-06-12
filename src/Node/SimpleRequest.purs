@@ -127,7 +127,7 @@ writeEndIgnore :: forall a e.(a -> (Client.Response -> Eff (http :: Node.HTTP | 
 writeEndIgnore r a b sc = do
   req <- r a sc
   let stream = Client.requestAsStream req
-  Stream.write stream b (pure unit)
+  _ <- Stream.write stream b (pure unit)
   Stream.end stream (pure unit)
 
 respSize::forall r.{responseHeaders::StrMap String|r} -> Int 
