@@ -73,7 +73,7 @@ postTest = do
   log "Body:"
   log res3.body
 
-main = Aff.runAff Console.logShow pure $ void do
+main = Aff.runAff_ (either Console.logShow pure) $ void do
   simpleTest
   optsTest
   postTest

@@ -32,6 +32,7 @@ import Data.Foldable (class Foldable, foldl)
 import Data.StrMap (StrMap, empty, insert, lookup)
 import Data.Maybe (fromMaybe)
 import Data.Int (fromNumber)
+import Data.Either (Either(..))
 
 import Control.Monad.Aff as Aff
 import Control.Monad.Aff.Unsafe (unsafeCoerceAff)
@@ -105,10 +106,10 @@ foreign import collapseStreamB :: forall w e. Int
 
 
 collapseStreamAff :: forall w e. Stream.Readable w e -> Aff.Aff e String
-collapseStreamAff = Aff.makeAff <<< collapseStream
+collapseStreamAff = makeAff' <<< collapseStream
 
 collapseStreamAffB :: forall w e. Int -> Stream.Readable w e -> Aff.Aff e Buffer.Buffer
-collapseStreamAffB size = Aff.makeAff <<< collapseStreamB size
+collapseStreamAffB size = makeAff' <<< collapseStreamB size
 
 collectResponseInfo :: Client.Response -> Response (Client.Response)
 collectResponseInfo resp =
@@ -167,10 +168,16 @@ writeEndIgnoreURI :: forall e. String -> Buffer.Buffer
                           -> Eff ( http :: Node.HTTP | e ) Unit
 writeEndIgnoreURI = writeEndIgnore Client.requestFromURI
 
-requestURIAsAff :: forall e. String -> Buffer.Buffer
-                -> Aff.Aff ( http :: Node.HTTP | e ) Client.Response
-requestURIAsAff s = Aff.makeAff <<< const <<< writeEndIgnoreURI s
+-- adapter from Aff 4.x to Aff 3.x API
+makeAff'::forall a eff aff.
+      ((Error -> Eff eff Unit) -> (a -> Eff eff Unit) -> Eff eff aff)
+      -> Aff.Aff eff a
+makeAff' oldAff = Aff.makeAff \k -> oldAff (k <<< Left) (k <<< Right)
+                    $> Aff.nonCanceler
 
+requestURIAsAff :: forall e. String -> Buffer.Buffer
+               -> Aff.Aff ( http :: Node.HTTP | e ) Client.Response
+requestURIAsAff s = makeAff' <<< const <<< writeEndIgnoreURI s
 simpleRequestURI :: forall e. String -> Buffer.Buffer -> Aff.Aff ( http :: Node.HTTP | e ) (Response String)
 simpleRequestURI = requestImpl requestURIAsAff
 
@@ -194,7 +201,7 @@ writeEndIgnoreOptions = writeEndIgnore Client.request
 requestAsAff :: forall e. Options.Options Client.RequestOptions
              -> Buffer.Buffer
              -> Aff.Aff ( http :: Node.HTTP | e ) Client.Response
-requestAsAff o = Aff.makeAff <<< const <<< writeEndIgnoreOptions o
+requestAsAff o = makeAff' <<< const <<< writeEndIgnoreOptions o
 
 simpleRequest :: forall e. Options.Options Client.RequestOptions
         -> Buffer.Buffer
